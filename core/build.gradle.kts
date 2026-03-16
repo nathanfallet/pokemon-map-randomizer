@@ -7,7 +7,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-
+            implementation(libs.kotlin.nds)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

@@ -1,6 +1,8 @@
 package me.nathanfallet.pokemonmaprandomizer
 
-import me.nathanfallet.pokemonmaprandomizer.codec.BlzCodec
+import me.nathanfallet.nds.BlzCodec
+import me.nathanfallet.nds.NarcArchive
+import me.nathanfallet.nds.NdsRom
 import me.nathanfallet.pokemonmaprandomizer.loader.BlockLoader
 import me.nathanfallet.pokemonmaprandomizer.loader.WarpDictionaryLoader
 import me.nathanfallet.pokemonmaprandomizer.loader.WarpLoader
@@ -12,8 +14,6 @@ import me.nathanfallet.pokemonmaprandomizer.randomizer.RandomizationResult
 import me.nathanfallet.pokemonmaprandomizer.randomizer.WarpWriter
 import me.nathanfallet.pokemonmaprandomizer.rom.Arm9Patcher
 import me.nathanfallet.pokemonmaprandomizer.rom.LanguageDetector
-import me.nathanfallet.pokemonmaprandomizer.rom.NarcArchive
-import me.nathanfallet.pokemonmaprandomizer.rom.NdsRom
 import kotlin.random.Random
 
 /**
