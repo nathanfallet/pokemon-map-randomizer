@@ -22,7 +22,7 @@ object Arm9Patcher {
         for (line in csvContent.lines().drop(1)) {
             val trimmed = line.trim().trimStart('\uFEFF')
             if (trimmed.isBlank()) continue
-            val parts = trimmed.split(",")
+            val parts = trimmed.split(",", "\t")
             if (parts.size < 2) continue
             val offset = parts[0].trim().toIntOrNull() ?: continue
             val value = parts[1].trim().toIntOrNull() ?: continue

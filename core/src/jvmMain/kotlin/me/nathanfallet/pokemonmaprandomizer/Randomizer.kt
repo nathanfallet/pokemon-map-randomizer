@@ -113,22 +113,27 @@ class Randomizer {
         // ---- 8. Repack NARC, rebuild NDS (ARM9 stays decompressed, like C++ ndstool) --
         val newNarc = NarcArchive.pack(updatedEventFiles)
 
-        // Also replace scr_seq.narc if present
-        val scrSeqNarc = resBytes("scr_seq.narc")
-        val scrSeqPath = when (game) {
-            Game.HG, Game.SS -> "a/0/1/2"
-            Game.B2, Game.W2 -> "a/0/1/2"
-        }
-
         val finalNds = nds
             .withArm9(arm9Patched)
             .withFiles(
                 buildMap {
                     put(narcPath, newNarc)
-                    if (scrSeqNarc != null) put(scrSeqPath, scrSeqNarc)
-                    // BW2: apply bw2_changes (map_functions, tr_data, tr_poke)
-                    if (game == Game.B2 || game == Game.W2) {
-                        putAll(loadBw2Changes(game, nds.files))
+                    when (game) {
+                        // HGSS: replace script sequences NARC
+                        Game.HG, Game.SS -> {
+                            val scrSeqNarc = resBytes("scr_seq.narc")
+                            if (scrSeqNarc != null) put("a/0/1/2", scrSeqNarc)
+                        }
+                        // BW2: patch fly flags in map header NARC + apply bw2_changes NARCs
+                        Game.B2, Game.W2 -> {
+                            put(
+                                "a/0/1/2", patchBw2MapHeaders(
+                                    nds.files["a/0/1/2"]
+                                        ?: error("Map header NARC not found at a/0/1/2")
+                                )
+                            )
+                            putAll(loadBw2Changes(nds.files))
+                        }
                     }
                 }
             )
@@ -182,9 +187,11 @@ class Randomizer {
             Language.GERMAN -> "_german"
             else -> "_english"
         }
+        // C++ uses SEASON_LOCK_BASE_W2 = "files/Blocks_BW2_Seasons/SeasonScripts/W2SeasonLock"
+        // W2 file has capital E: W2SeasonLock_English.csv; B2 uses lowercase: B2SeasonLock_english.csv
         val base = when (game) {
-            Game.W2 -> "bw2_changes/season_scripts_w2$langSuffix"
-            Game.B2 -> "bw2_changes/season_scripts_b2$langSuffix"
+            Game.W2 -> "Blocks_BW2_Seasons/SeasonScripts/W2SeasonLock${langSuffix.replaceFirstChar { it.uppercase() }}"
+            Game.B2 -> "Blocks_BW2_Seasons/SeasonScripts/B2SeasonLock$langSuffix"
             else -> return ""
         }
         return resOrEmpty("$base.csv")
@@ -199,55 +206,75 @@ class Randomizer {
             Game.HG, Game.SS -> "event_data"
             Game.B2, Game.W2 -> "bw2_changes/event_data_bw2"
         }
-        val cl = Thread.currentThread().contextClassLoader
-        // Files named "<index>_<something>.bin" or just "<index>.bin"
-        val pkg = dir.replace('/', '.')
-        // We enumerate by trying known file-list resource or scanning
-        // Simpler: iterate over files in the jar manifest or use a known index file
-        // For now, load any .bin files under the directory via ClassLoader resource listing
-        val indexBytes = cl.getResourceAsStream("$dir/index.txt")
-        if (indexBytes != null) {
-            val lines = indexBytes.bufferedReader().readLines()
-            for (line in lines) {
-                val trimmed = line.trim()
-                if (trimmed.isBlank()) continue
-                val idx = trimmed.substringBefore("_").toIntOrNull() ?: continue
-                val data = cl.getResourceAsStream("$dir/$trimmed") ?: continue
-                if (idx < eventFiles.size) {
-                    eventFiles[idx] = data.readBytes()
-                }
-            }
-        } else {
-            // Fallback: try to load files by pattern (won't work in all jar configurations
-            // but works when running from file system during development)
-            try {
-                val url = cl.getResource(dir) ?: return
-                val f = java.io.File(url.toURI())
-                if (!f.isDirectory) return
-                for (entry in f.listFiles()?.sortedBy { it.name } ?: return) {
-                    if (!entry.name.endsWith(".bin")) continue
-                    val idx = entry.name.substringBefore("_").toIntOrNull() ?: continue
-                    if (idx < eventFiles.size) {
-                        eventFiles[idx] = entry.readBytes()
-                    }
-                }
-            } catch (_: Exception) {
-                // Silently ignore — replacement files are optional fixes
-            }
+        loadReplacementBins(dir).forEach { (idx, data) ->
+            if (idx < eventFiles.size) eventFiles[idx] = data
         }
     }
 
+    /** Loads all .bin files from [dir] resource directory, keyed by the file index
+     *  parsed from the filename pattern `STEM_NNNNNNNN.bin` (the number after the last `_`). */
+    private fun loadReplacementBins(dir: String): Map<Int, ByteArray> {
+        val result = mutableMapOf<Int, ByteArray>()
+        val cl = Thread.currentThread().contextClassLoader
+        val indexStream = cl.getResourceAsStream("$dir/index.txt")
+        val names: List<String> = if (indexStream != null) {
+            indexStream.bufferedReader().readLines().map { it.trim() }.filter { it.isNotBlank() }
+        } else {
+            try {
+                val url = cl.getResource(dir) ?: return result
+                val f = java.io.File(url.toURI())
+                if (!f.isDirectory) return result
+                f.listFiles()?.filter { it.name.endsWith(".bin") }?.map { it.name } ?: return result
+            } catch (_: Exception) {
+                return result
+            }
+        }
+        for (name in names.sorted()) {
+            if (!name.endsWith(".bin")) continue
+            // Index is the digits after the last underscore: "6_00000028.bin" → 28
+            val idx = name.substringBeforeLast(".").substringAfterLast("_").toIntOrNull() ?: continue
+            val data = cl.getResourceAsStream("$dir/$name") ?: continue
+            result[idx] = data.readBytes()
+        }
+        return result
+    }
+
     // -------------------------------------------------------------------------
-    // BW2-specific NARC changes (map_functions, tr_data, tr_poke)
+    // BW2-specific map header patching (fly flags) and NARC changes
     // -------------------------------------------------------------------------
 
-    private fun loadBw2Changes(game: Game, existingFiles: Map<String, ByteArray>): Map<String, ByteArray> {
-        val changes = mutableMapOf<String, ByteArray>()
-        // bw2_changes contain NARC files that replace specific game data NARCs
-        // The mapping is: bw2_changes/<type>_bw2/<files> → various ROM paths
-        // These are applied on top of the existing ROM filesystem
-        // (specific paths depend on the game; approximated here)
-        return changes
+    /** Sets bit 5 (0x20) of byte 0x1F in every 0x30-byte map header entry (C++ Gen5 fly-flag patch). */
+    private fun patchBw2MapHeaders(narcBytes: ByteArray): ByteArray {
+        val files = NarcArchive.unpack(narcBytes).toMutableList()
+        for (i in files.indices) {
+            val data = files[i].copyOf()
+            var pos = 0x1F
+            while (pos < data.size) {
+                data[pos] = (data[pos].toInt() or 0x20).toByte()
+                pos += 0x30
+            }
+            files[i] = data
+        }
+        return NarcArchive.pack(files)
+    }
+
+    /** Applies bw2_changes replacement bins to their respective NARCs and returns updated NARC bytes keyed by ROM path. */
+    private fun loadBw2Changes(existingFiles: Map<String, ByteArray>): Map<String, ByteArray> {
+        val targets = listOf(
+            Triple("bw2_changes/map_functions_bw2", "a/0/5/6", "map_functions"),
+            Triple("bw2_changes/tr_data_bw2", "a/0/9/1", "trainer data"),
+            Triple("bw2_changes/tr_poke_bw2", "a/0/9/2", "trainer poke"),
+        )
+        return buildMap {
+            for ((resDir, narcPath, _) in targets) {
+                val bins = loadReplacementBins(resDir)
+                if (bins.isEmpty()) continue
+                val original = existingFiles[narcPath] ?: continue
+                val files = NarcArchive.unpack(original).toMutableList()
+                bins.forEach { (idx, data) -> if (idx < files.size) files[idx] = data }
+                put(narcPath, NarcArchive.pack(files))
+            }
+        }
     }
 
     // -------------------------------------------------------------------------
