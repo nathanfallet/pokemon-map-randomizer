@@ -17,7 +17,7 @@ allprojects {
     project.ext.set("developer.name", "Nathan Fallet")
     project.ext.set("developer.email", "contact@nathanfallet.me")
     project.ext.set("developer.url", "https://www.nathanfallet.me")
-    project.ext.set("scm.url", "https://github.com/nathanfallet/pokemon-map-randomizer\").git")
+    project.ext.set("scm.url", "https://github.com/nathanfallet/pokemon-map-randomizer.git")
 }
 
 dependencies {
