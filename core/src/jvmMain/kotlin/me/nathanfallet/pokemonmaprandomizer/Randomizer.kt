@@ -1,8 +1,8 @@
 package me.nathanfallet.pokemonmaprandomizer
 
-import me.nathanfallet.nds.BlzCodec
-import me.nathanfallet.nds.NarcArchive
-import me.nathanfallet.nds.NdsRom
+import dev.kotlinds.BlzCodec
+import dev.kotlinds.NarcArchive
+import dev.kotlinds.NdsRom
 import me.nathanfallet.pokemonmaprandomizer.loader.BlockLoader
 import me.nathanfallet.pokemonmaprandomizer.loader.WarpDictionaryLoader
 import me.nathanfallet.pokemonmaprandomizer.loader.WarpLoader

@@ -1,6 +1,6 @@
 package me.nathanfallet.pokemonmaprandomizer
 
-import me.nathanfallet.nds.NarcArchive
+import dev.kotlinds.NarcArchive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

@@ -37,7 +37,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            implementation(libs.kotlin.nds)
+            implementation(libs.kotlinds)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
